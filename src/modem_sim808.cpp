@@ -307,5 +307,9 @@ String modemGetTimestamp()
 
 String modemGetLocalIP()
 {
-    return modem.localIP().toString();
+    IPAddress ip = modem.localIP();
+    char ipStr[20];
+    snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+    return String(ipStr);
 }
+
