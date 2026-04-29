@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <TinyGsmClient.h>
+#include "board_compat.h"
 #include "modem_iface.h"
 #include "config.h"
 
@@ -74,14 +75,14 @@ bool modemProbeUART()
     const uint32_t baudRates[] = {MODEM_BAUD, 115200, 57600, 38400, 19200, 4800};
     constexpr uint8_t attemptsPerBaud = 3;
 
-    Serial.println("Teste UART ESP32 <-> SIM808");
+    Serial.println("Teste UART MCU <-> SIM808");
 
     for (uint8_t i = 0; i < sizeof(baudRates) / sizeof(baudRates[0]); i++)
     {
         const uint32_t baud = baudRates[i];
 
         Serial.printf("Probar modem a %lu baud...\n", (unsigned long)baud);
-        SerialAT.begin(baud, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
+        boardBeginModemSerial(SerialAT, baud);
         delay(1200);
 
         for (uint8_t attempt = 0; attempt < attemptsPerBaud; attempt++)

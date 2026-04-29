@@ -4,10 +4,15 @@
 #include <PubSubClient.h>
 
 #include "config.h"
+#include "board_compat.h"
 #include "modem_iface.h"
 #include "bike_logic.h"
 
+#if defined(ARDUINO_ARCH_STM32)
+HardwareSerial SerialAT(MODEM_RX_PIN, MODEM_TX_PIN);
+#else
 HardwareSerial SerialAT(1);
+#endif
 
 TinyGsm modem(SerialAT);
 TinyGsmClient client(modem);
@@ -57,7 +62,7 @@ static float readBatteryVoltage()
 
     for (uint8_t i = 0; i < sampleCount; i++)
     {
-        sumMv += analogReadMilliVolts(BATTERY_ADC_PIN);
+        sumMv += boardReadAnalogMilliVolts(BATTERY_ADC_PIN);
         delay(2);
     }
 
@@ -260,7 +265,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
         sendAck(messageId, "success");
         delay(1000);
-        ESP.restart();
+        boardRestart();
     }
     else if (strcmp(command, "firmware_update") == 0)
     {
@@ -390,15 +395,14 @@ void setup()
 
     Serial.println("START");
 
-    analogReadResolution(12);
-    analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
+    boardConfigureAdc();
 
 #if BATTERY_TEST_MODE
     Serial.println("BATTERY TEST MODE");
     return;
 #endif
 
-    SerialAT.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
+    boardBeginModemSerial(SerialAT, MODEM_BAUD);
     delay(3000);
 
     if (!modemProbeUART())
