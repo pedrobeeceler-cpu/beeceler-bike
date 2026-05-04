@@ -16,15 +16,15 @@
 #define APN "internet.vodafone.pt"
 
 // UART ESP32 <-> SIM808
-#define MODEM_RX_PIN 16
-#define MODEM_TX_PIN 17
+#define MODEM_RX_PIN 20
+#define MODEM_TX_PIN 21
 #define MODEM_BAUD 9600
 
 // Battery sensing via Grove Voltage Divider (bike battery: 36V empty, 42V full, module gain 10)
 #define BATTERY_TEST_MODE 0
 #define GPS_ONLY_TEST_MODE 0
 #define GPS_AT_DIAGNOSTIC_MODE 0
-#define BATTERY_ADC_PIN 34
+#define BATTERY_ADC_PIN 4
 #define BATTERY_ADC_MAX_MV 3300.0f
 #define BATTERY_ADC_EXTRA_DIVIDER_RATIO 0.733333f
 #define BATTERY_GROVE_GAIN 10.0f

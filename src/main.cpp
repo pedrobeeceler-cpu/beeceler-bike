@@ -3,6 +3,10 @@
 #include <TinyGsmClient.h>
 #include <PubSubClient.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include "esp_task_wdt.h"
+#endif
+
 #include "config.h"
 #include "modem_iface.h"
 #include "bike_logic.h"
@@ -389,6 +393,15 @@ void setup()
     delay(2000);
 
     Serial.println("START");
+
+#if defined(ARDUINO_ARCH_ESP32)
+    // ESP32-C3 + SIM808: modem operations (waitForNetwork/gprsConnect) can block long enough to trip watchdogs.
+    // We rely on our own timeouts/retries instead.
+    disableLoopWDT();
+    // Some resets we saw are TG0WDT_SYS_RST; disable the task WDT as well.
+    // If not supported by the core, this call is a no-op / returns an error (safe to ignore).
+    esp_task_wdt_deinit();
+#endif
 
     analogReadResolution(12);
     analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);

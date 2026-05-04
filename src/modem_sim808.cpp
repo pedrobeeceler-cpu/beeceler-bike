@@ -71,7 +71,8 @@ String modemSendATCommand(const String &cmd, uint32_t timeoutMs)
 
 bool modemProbeUART()
 {
-    const uint32_t baudRates[] = {MODEM_BAUD, 115200, 57600, 38400, 19200, 4800};
+    // Many SIM808/SIM800 boards ship configured at 115200 or autobaud; try it early to reduce "Sem resposta".
+    const uint32_t baudRates[] = {115200, MODEM_BAUD, 57600, 38400, 19200, 9600, 4800};
     constexpr uint8_t attemptsPerBaud = 3;
 
     Serial.println("Teste UART ESP32 <-> SIM808");
@@ -79,6 +80,8 @@ bool modemProbeUART()
     for (uint8_t i = 0; i < sizeof(baudRates) / sizeof(baudRates[0]); i++)
     {
         const uint32_t baud = baudRates[i];
+        if (i > 0 && baud == baudRates[i - 1])
+            continue;
 
         Serial.printf("Probar modem a %lu baud...\n", (unsigned long)baud);
         SerialAT.begin(baud, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
@@ -149,21 +152,46 @@ bool modemConnectNetwork()
 {
     Serial.println("Registar na rede...");
 
-    if (!modem.waitForNetwork(MODEM_NETWORK_TIMEOUT_MS))
+    // TinyGSM's waitForNetwork can be a long blocking call depending on network conditions.
+    // On ESP32-C3 this has been observed to trigger watchdog resets, so we poll in short chunks.
+    const unsigned long start = millis();
+    while (millis() - start < MODEM_NETWORK_TIMEOUT_MS)
     {
-        Serial.println("Falha no registo da rede");
-        return false;
+        if (modem.isNetworkConnected())
+        {
+            Serial.println("Rede registada");
+            return true;
+        }
+
+        // Short attempt; keep the MCU responsive.
+        modem.waitForNetwork(1500L);
+        delay(250);
+        yield();
     }
 
-    Serial.println("Rede registada");
-    return true;
+    Serial.println("Falha no registo da rede");
+    return false;
 }
 
 bool modemConnectData()
 {
     Serial.println("Ativar GPRS...");
 
-    if (!modem.gprsConnect(APN, "", ""))
+    const unsigned long start = millis();
+    while (millis() - start < MODEM_NETWORK_TIMEOUT_MS)
+    {
+        if (modem.isGprsConnected())
+            break;
+
+        // Short attempt; keep the MCU responsive.
+        if (modem.gprsConnect(APN, "", ""))
+            break;
+
+        delay(500);
+        yield();
+    }
+
+    if (!modem.isGprsConnected())
     {
         Serial.println("Falha na ligacao GPRS");
         return false;
