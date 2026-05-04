@@ -69,10 +69,99 @@ String modemSendATCommand(const String &cmd, uint32_t timeoutMs)
     return readResponse(timeoutMs);
 }
 
+static String compactResponse(String resp)
+{
+    resp.replace("\r", " ");
+    resp.replace("\n", " ");
+    resp.trim();
+    return resp;
+}
+
+static int parseRegistrationStatus(const String &resp)
+{
+    const int comma = resp.indexOf(',');
+    if (comma < 0)
+        return -1;
+
+    int pos = comma + 1;
+    while (pos < (int)resp.length() && resp[pos] == ' ')
+        pos++;
+
+    if (pos >= (int)resp.length() || resp[pos] < '0' || resp[pos] > '9')
+        return -1;
+
+    return resp.substring(pos).toInt();
+}
+
+static const char *registrationStatusText(int status)
+{
+    switch (status)
+    {
+    case 0:
+        return "nao registado";
+    case 1:
+        return "registado rede local";
+    case 2:
+        return "a procurar rede";
+    case 3:
+        return "registo recusado";
+    case 4:
+        return "estado desconhecido";
+    case 5:
+        return "registado roaming";
+    default:
+        return "sem leitura";
+    }
+}
+
+static void printATDiagnostic(const char *label, const char *cmd, uint32_t timeoutMs = 2000)
+{
+    const String resp = compactResponse(modemSendATCommand(cmd, timeoutMs));
+    Serial.print(label);
+    Serial.print(" | ");
+    Serial.println(resp.length() > 0 ? resp : "sem resposta");
+}
+
+static void printRegistrationDiagnostic(const char *label, const char *cmd)
+{
+    const String rawResp = modemSendATCommand(cmd, 2000);
+    const String resp = compactResponse(rawResp);
+    const int status = parseRegistrationStatus(rawResp);
+
+    Serial.print(label);
+    Serial.print(" | ");
+    Serial.print(resp.length() > 0 ? resp : "sem resposta");
+    Serial.print(" | status=");
+    Serial.print(status);
+    Serial.print(" (");
+    Serial.print(registrationStatusText(status));
+    Serial.println(")");
+}
+
+static void printNetworkDiagnostics()
+{
+    Serial.println("Diagnostico rede SIM808:");
+    printATDiagnostic("SIM", "AT+CPIN?");
+    printATDiagnostic("Sinal", "AT+CSQ");
+    printRegistrationDiagnostic("CREG", "AT+CREG?");
+    printRegistrationDiagnostic("CGREG", "AT+CGREG?");
+    printATDiagnostic("Operador", "AT+COPS?", 3000);
+}
+
+static void printGprsDiagnostics(bool includeIp = false)
+{
+    Serial.println("Diagnostico GPRS SIM808:");
+    printATDiagnostic("Attach", "AT+CGATT?");
+    printATDiagnostic("PDP", "AT+CGACT?");
+    printATDiagnostic("Bearer", "AT+SAPBR=2,1", 5000);
+
+    if (includeIp)
+        printATDiagnostic("IP", "AT+CIFSR;E0", 5000);
+}
+
 bool modemProbeUART()
 {
-    // Many SIM808/SIM800 boards ship configured at 115200 or autobaud; try it early to reduce "Sem resposta".
-    const uint32_t baudRates[] = {115200, MODEM_BAUD, 57600, 38400, 19200, 9600, 4800};
+    const uint32_t baudRates[] = {MODEM_BAUD, 115200, 57600, 38400, 19200, 4800};
     constexpr uint8_t attemptsPerBaud = 3;
 
     Serial.println("Teste UART ESP32 <-> SIM808");
@@ -80,8 +169,6 @@ bool modemProbeUART()
     for (uint8_t i = 0; i < sizeof(baudRates) / sizeof(baudRates[0]); i++)
     {
         const uint32_t baud = baudRates[i];
-        if (i > 0 && baud == baudRates[i - 1])
-            continue;
 
         Serial.printf("Probar modem a %lu baud...\n", (unsigned long)baud);
         SerialAT.begin(baud, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
@@ -152,48 +239,25 @@ bool modemConnectNetwork()
 {
     Serial.println("Registar na rede...");
 
-    // TinyGSM's waitForNetwork can be a long blocking call depending on network conditions.
-    // On ESP32-C3 this has been observed to trigger watchdog resets, so we poll in short chunks.
-    const unsigned long start = millis();
-    while (millis() - start < MODEM_NETWORK_TIMEOUT_MS)
+    if (!modem.waitForNetwork(MODEM_NETWORK_TIMEOUT_MS))
     {
-        if (modem.isNetworkConnected())
-        {
-            Serial.println("Rede registada");
-            return true;
-        }
-
-        // Short attempt; keep the MCU responsive.
-        modem.waitForNetwork(1500L);
-        delay(250);
-        yield();
+        Serial.println("Falha no registo da rede");
+        printNetworkDiagnostics();
+        return false;
     }
 
-    Serial.println("Falha no registo da rede");
-    return false;
+    Serial.println("Rede registada");
+    return true;
 }
 
 bool modemConnectData()
 {
     Serial.println("Ativar GPRS...");
 
-    const unsigned long start = millis();
-    while (millis() - start < MODEM_NETWORK_TIMEOUT_MS)
-    {
-        if (modem.isGprsConnected())
-            break;
-
-        // Short attempt; keep the MCU responsive.
-        if (modem.gprsConnect(APN, "", ""))
-            break;
-
-        delay(500);
-        yield();
-    }
-
-    if (!modem.isGprsConnected())
+    if (!modem.gprsConnect(APN, "", ""))
     {
         Serial.println("Falha na ligacao GPRS");
+        printGprsDiagnostics(true);
         return false;
     }
 

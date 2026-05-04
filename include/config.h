@@ -15,9 +15,9 @@
 // APN
 #define APN "internet.vodafone.pt"
 
-// UART ESP32 <-> SIM808
-#define MODEM_RX_PIN 20
-#define MODEM_TX_PIN 21
+// UART ESP32-C3 Super Mini <-> SIM808
+#define MODEM_RX_PIN RX
+#define MODEM_TX_PIN TX
 #define MODEM_BAUD 9600
 
 // Battery sensing via Grove Voltage Divider (bike battery: 36V empty, 42V full, module gain 10)
